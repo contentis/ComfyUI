@@ -591,6 +591,7 @@ class DismantledBlock(nn.Module):
             )
             return self.post_attention(attn, *intermediates)
 
+@comfy.ops.compile_decorator
 def gate_cat(x, gate_msa, gate_msa2, attn1, attn2):
     out1 = gate_msa.unsqueeze(1) * attn1
     out2 = gate_msa2.unsqueeze(1) * attn2
