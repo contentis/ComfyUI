@@ -494,6 +494,19 @@ class WanModel(torch.nn.Module):
         else:
             self.ref_conv = None
 
+    def block_fwd(self, x, context, e, freqs, context_img_len, blocks_replace):
+        for i, block in enumerate(self.blocks):
+            if ("double_block", i) in blocks_replace:
+                def block_wrap(args):
+                    out = {}
+                    out["img"] = block(args["img"], context=args["txt"], e=args["vec"], freqs=args["pe"], context_img_len=context_img_len)
+                    return out
+                out = blocks_replace[("double_block", i)]({"img": x, "txt": context, "vec": e, "pe": freqs}, {"original_block": block_wrap})
+                x = out["img"]
+            else:
+                x = block(x, context=context, e=e, freqs=freqs,  context_img_len=context_img_len)
+        return x
+
     def forward_orig(
         self,
         x,
@@ -555,16 +568,7 @@ class WanModel(torch.nn.Module):
 
         patches_replace = transformer_options.get("patches_replace", {})
         blocks_replace = patches_replace.get("dit", {})
-        for i, block in enumerate(self.blocks):
-            if ("double_block", i) in blocks_replace:
-                def block_wrap(args):
-                    out = {}
-                    out["img"] = block(args["img"], context=args["txt"], e=args["vec"], freqs=args["pe"], context_img_len=context_img_len)
-                    return out
-                out = blocks_replace[("double_block", i)]({"img": x, "txt": context, "vec": e0, "pe": freqs}, {"original_block": block_wrap})
-                x = out["img"]
-            else:
-                x = block(x, e=e0, freqs=freqs, context=context, context_img_len=context_img_len)
+        x = self.block_fwd(x=x, context=context, e=e0, freqs=freqs, context_img_len=context_img_len, blocks_replace=blocks_replace)
 
         # head
         x = self.head(x, e)

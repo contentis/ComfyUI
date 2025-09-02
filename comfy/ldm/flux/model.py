@@ -89,6 +89,71 @@ class Flux(nn.Module):
         if final_layer:
             self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels, dtype=dtype, device=device, operations=operations)
 
+    def double_transformer_fwd(self, img, txt, vec, pe, attn_mask, control, blocks_replace):
+        for i, block in enumerate(self.double_blocks):
+            if ("double_block", i) in blocks_replace:
+                def block_wrap(args):
+                    out = {}
+                    out["img"], out["txt"] = block(img=args["img"],
+                                                   txt=args["txt"],
+                                                   vec=args["vec"],
+                                                   pe=args["pe"],
+                                                   attn_mask=args.get("attn_mask"))
+                    return out
+
+                out = blocks_replace[("double_block", i)]({"img": img,
+                                                           "txt": txt,
+                                                           "vec": vec,
+                                                           "pe": pe,
+                                                           "attn_mask": attn_mask},
+                                                          {"original_block": block_wrap})
+                txt = out["txt"]
+                img = out["img"]
+            else:
+                img, txt = block(img=img,
+                                 txt=txt,
+                                 vec=vec,
+                                 pe=pe,
+                                 attn_mask=attn_mask)
+
+            if control is not None: # Controlnet
+                control_i = control.get("input")
+                if i < len(control_i):
+                    add = control_i[i]
+                    if add is not None:
+                        img[:, :add.shape[1]] += add
+
+        return img, txt
+
+
+    def single_transformer_fwd(self, img, txt, vec, pe, attn_mask, control, blocks_replace):
+        for i, block in enumerate(self.single_blocks):
+            if ("single_block", i) in blocks_replace:
+                def block_wrap(args):
+                    out = {}
+                    out["img"] = block(args["img"],
+                                       vec=args["vec"],
+                                       pe=args["pe"],
+                                       attn_mask=args.get("attn_mask"))
+                    return out
+
+                out = blocks_replace[("single_block", i)]({"img": img,
+                                                           "vec": vec,
+                                                           "pe": pe,
+                                                           "attn_mask": attn_mask},
+                                                          {"original_block": block_wrap})
+                img = out["img"]
+            else:
+                img = block(img, vec=vec, pe=pe, attn_mask=attn_mask)
+
+            if control is not None: # Controlnet
+                control_o = control.get("output")
+                if i < len(control_o):
+                    add = control_o[i]
+                    if add is not None:
+                        img[:, txt.shape[1] : txt.shape[1] + add.shape[1], ...] += add
+        return img
+
     def forward_orig(
         self,
         img: Tensor,
@@ -127,69 +192,15 @@ class Flux(nn.Module):
             pe = None
 
         blocks_replace = patches_replace.get("dit", {})
-        for i, block in enumerate(self.double_blocks):
-            if ("double_block", i) in blocks_replace:
-                def block_wrap(args):
-                    out = {}
-                    out["img"], out["txt"] = block(img=args["img"],
-                                                   txt=args["txt"],
-                                                   vec=args["vec"],
-                                                   pe=args["pe"],
-                                                   attn_mask=args.get("attn_mask"))
-                    return out
+        img, txt = self.double_transformer_fwd(img=img, txt=txt, vec=vec, pe=pe, attn_mask=attn_mask, control=control, blocks_replace=blocks_replace)
 
-                out = blocks_replace[("double_block", i)]({"img": img,
-                                                           "txt": txt,
-                                                           "vec": vec,
-                                                           "pe": pe,
-                                                           "attn_mask": attn_mask},
-                                                          {"original_block": block_wrap})
-                txt = out["txt"]
-                img = out["img"]
-            else:
-                img, txt = block(img=img,
-                                 txt=txt,
-                                 vec=vec,
-                                 pe=pe,
-                                 attn_mask=attn_mask)
-
-            if control is not None: # Controlnet
-                control_i = control.get("input")
-                if i < len(control_i):
-                    add = control_i[i]
-                    if add is not None:
-                        img[:, :add.shape[1]] += add
 
         if img.dtype == torch.float16:
             img = torch.nan_to_num(img, nan=0.0, posinf=65504, neginf=-65504)
 
         img = torch.cat((txt, img), 1)
 
-        for i, block in enumerate(self.single_blocks):
-            if ("single_block", i) in blocks_replace:
-                def block_wrap(args):
-                    out = {}
-                    out["img"] = block(args["img"],
-                                       vec=args["vec"],
-                                       pe=args["pe"],
-                                       attn_mask=args.get("attn_mask"))
-                    return out
-
-                out = blocks_replace[("single_block", i)]({"img": img,
-                                                           "vec": vec,
-                                                           "pe": pe,
-                                                           "attn_mask": attn_mask},
-                                                          {"original_block": block_wrap})
-                img = out["img"]
-            else:
-                img = block(img, vec=vec, pe=pe, attn_mask=attn_mask)
-
-            if control is not None: # Controlnet
-                control_o = control.get("output")
-                if i < len(control_o):
-                    add = control_o[i]
-                    if add is not None:
-                        img[:, txt.shape[1] : txt.shape[1] + add.shape[1], ...] += add
+        img = self.single_transformer_fwd(img=img, txt=txt, vec=vec, pe=pe, attn_mask=attn_mask, control=control, blocks_replace=blocks_replace)
 
         img = img[:, txt.shape[1] :, ...]
 
