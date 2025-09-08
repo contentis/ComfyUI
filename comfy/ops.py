@@ -336,11 +336,7 @@ def fp8_linear(self, input):
 
         if scale_input is None:
             scale_input = torch.ones((), device=input.device, dtype=torch.float32)
-            input = torch.clamp(input, min=-448, max=448, out=input)
-            input = input.reshape(-1, input_shape[2]).to(dtype).contiguous()
-        else:
-            scale_input = scale_input.to(input.device)
-            input = (input * (1.0 / scale_input).to(input_dtype)).reshape(-1, input_shape[2]).to(dtype).contiguous()
+        input = quantizer(input, scale_input, dtype).reshape(-1, input_shape[2])
 
         if bias is not None:
             o = torch._scaled_mm(input, w, out_dtype=input_dtype, bias=bias, scale_a=scale_input, scale_b=scale_weight)
@@ -356,6 +352,19 @@ def fp8_linear(self, input):
         return o.reshape((-1, input_shape[1], self.weight.shape[0]))
 
     return None
+try:
+    from kernel import quantize_e4m3_tensor
+    q_fn = quantize_e4m3_tensor
+except:
+    q_fn = None
+
+@torch.cuda.nvtx.range("quantizer")
+def quantizer(x: torch.Tensor, scale: torch.Tensor, q_type: torch.dtype):
+    if q_fn is None:
+        x = (x / scale).clamp(min=torch.finfo(q_type).min, max=torch.finfo(q_type).max).to(q_type).contiguous()
+    else:
+        x = q_fn(x, scale)
+    return x
 
 class fp8_ops(manual_cast):
     class Linear(manual_cast.Linear):
