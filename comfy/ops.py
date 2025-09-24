@@ -23,7 +23,7 @@ import comfy.float
 import comfy.rmsnorm
 import contextlib
 from comfy.quant_tensor import (Q_TYPES, tensor_quantizer, tensor_dequantizer, dynamic_tensor_quantizer,
-                                woq_fwd, quantized_fwd, get_quantizer_with_constraints)
+                                woq_fwd, quantized_fwd, get_quantizer_with_constraints, nvfp4_quantizer, nvfp4_gemm)
 import types
 import inspect
 
@@ -125,7 +125,7 @@ class disable_weight_init:
         def reset_parameters(self):
             return None
 
-        def _set_quantizer_fn(self, scale_weight, scale_input):
+        def _set_quantizer_fn(self, scale_weight, scale_input, block_scale=None):
             if scale_weight.ndim != 0 and scale_weight.shape[0] != 1:
                 raise ValueError("Blockwise quantization is not supported")
             if scale_input is None and self.use_dynamic_quantizer:
@@ -133,16 +133,22 @@ class disable_weight_init:
             else:
                 setattr(self, "quantizer", tensor_quantizer)
 
+            if block_scale is not None:
+                setattr(self, "quantizer", nvfp4_quantizer)
+
         def _set_dequantizer_fn(self, scale_weight):
             if scale_weight.ndim != 0 and scale_weight.shape[0] != 1:
                 raise ValueError("Blockwise quantization is not supported")
             setattr(self, "dequantizer", tensor_dequantizer)
 
-        def _set_quantized_forward(self):
+        def _set_quantized_forward(self, block_scale=None):
             if not self.fp8_compute:
                 q_fwd = woq_fwd
             else:
                 q_fwd = quantized_fwd
+
+            if block_scale is not None:
+                q_fwd = nvfp4_gemm
             self.forward = types.MethodType(q_fwd, self)
 
         def _init_parameters_from_sd(self, state_dict, prefix):
@@ -166,8 +172,13 @@ class disable_weight_init:
             if weight_dtype not in Q_TYPES:
                 weight_dtype = self.compute_dtype
 
-            weight = torch.nn.Parameter(
-                torch.empty((self.out_features, self.in_features), device=self.device, dtype=weight_dtype))
+            use_nvfp4 = False
+            if weight_dtype == torch.uint8 and f"{prefix}block_scale_weight" in state_dict:
+                use_nvfp4 = True
+                weight = torch.empty((self.out_features, self.in_features // 2), device=self.device, dtype=weight_dtype)
+            else:
+                weight = torch.nn.Parameter(
+                    torch.empty((self.out_features, self.in_features), device=self.device, dtype=weight_dtype))
 
             self.register_buffer('weight', weight)
             if weight_dtype not in Q_TYPES:
@@ -178,11 +189,15 @@ class disable_weight_init:
                 logging.debug("Using quantized weights without a scale can result in low accuracy.")
                 scale_weight = torch.ones(1)
                 state_dict[f"{prefix}scale_weight"] = scale_weight
-            self.register_buffer('scale_weight', scale_weight.to(device=self.device))
+            self.register_buffer('scale_weight', scale_weight.to(device=self.device, dtype=torch.float32))
+
+            block_scale = state_dict.get(f"{prefix}block_scale_weight", None)
+            if block_scale is not None:
+                self.register_buffer('block_scale_weight', block_scale.to(device=self.device, dtype=torch.float8_e4m3fn))
 
             scale_input = state_dict.get(f"{prefix}scale_input", None)
             if scale_input is not None:
-                self.register_buffer('scale_input', scale_input.to(device=self.device))
+                self.register_buffer('scale_input', scale_input.to(device=self.device, dtype=torch.float32))
             elif not self.use_dynamic_quantizer:
                 # Fallback to WoQ
                 self.fp8_compute = False
@@ -191,9 +206,9 @@ class disable_weight_init:
                 # WAR not really nice, but Qwen VL has an input scale but uses f32 intermediates and quantized bias
                 self.fp8_compute = self.fp8_compute and (self.bias.dtype in [torch.float16, torch.bfloat16])
 
-            self._set_quantizer_fn(scale_weight, scale_input)
+            self._set_quantizer_fn(scale_weight, scale_input, block_scale)
             self._set_dequantizer_fn(scale_weight)
-            self._set_quantized_forward()
+            self._set_quantized_forward(block_scale)
 
         def _load_from_state_dict(
                 self,

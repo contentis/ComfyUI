@@ -5,21 +5,13 @@ from torch import Tensor
 from comfy.ldm.modules.attention import optimized_attention
 import comfy.model_management
 
-
 def attention(q: Tensor, k: Tensor, v: Tensor, pe: Tensor, mask=None) -> Tensor:
-    q_shape = q.shape
-    k_shape = k.shape
-
     if pe is not None:
-        q = q.to(dtype=pe.dtype).reshape(*q.shape[:-1], -1, 1, 2)
-        k = k.to(dtype=pe.dtype).reshape(*k.shape[:-1], -1, 1, 2)
-        q = (pe[..., 0] * q[..., 0] + pe[..., 1] * q[..., 1]).reshape(*q_shape).type_as(v)
-        k = (pe[..., 0] * k[..., 0] + pe[..., 1] * k[..., 1]).reshape(*k_shape).type_as(v)
+        q, k = apply_rope(q, k, pe)
 
     heads = q.shape[1]
     x = optimized_attention(q, k, v, heads, skip_reshape=True, mask=mask)
     return x
-
 
 def rope(pos: Tensor, dim: int, theta: int) -> Tensor:
     assert dim % 2 == 0
@@ -35,7 +27,7 @@ def rope(pos: Tensor, dim: int, theta: int) -> Tensor:
     out = rearrange(out, "b n d (i j) -> b n d i j", i=2, j=2)
     return out.to(dtype=torch.float32, device=pos.device)
 
-
+@torch.compile()
 def apply_rope(xq: Tensor, xk: Tensor, freqs_cis: Tensor):
     xq_ = xq.to(dtype=freqs_cis.dtype).reshape(*xq.shape[:-1], -1, 1, 2)
     xk_ = xk.to(dtype=freqs_cis.dtype).reshape(*xk.shape[:-1], -1, 1, 2)

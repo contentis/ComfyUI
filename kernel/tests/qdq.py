@@ -1,6 +1,6 @@
 import torch
 from kernel.tests.float_utils import _float8_round, _f32_to_floatx_unpacked, pack_uint4, to_blocked, unpack_uint4, _floatx_unpacked_to_f32
-from comfy_quant import tensor_absmax, quantize_per_tensor_fp8, quantize_blockwise_fp4, fp4_gemm_blockwise
+from comfy_quant import tensor_absmax, quantize_per_tensor_fp8, quantize_transpose_vector_blockwise_fp4, fp4_gemm_blockwise
 
 F4_E2M1_MAX = 6.0
 F8_E4M3_MAX = 448.0
@@ -83,7 +83,7 @@ def test_quantize_blockwise_fp4(input_type: torch.dtype = torch.bfloat16, num_el
     global_amax = tensor_absmax(sample_tensor)
     tensor_scale = (global_amax / lp_max).to(torch.float32)
 
-    q_tensor, sx, qx_t, sx_t = quantize_blockwise_fp4(sample_tensor, global_amax, return_identity=True, return_transpose=False, swizzled_scale=True)
+    q_tensor, sx, qx_t, sx_t = quantize_transpose_vector_blockwise_fp4(sample_tensor, global_amax, return_identity=True, return_transpose=False, swizzled_scale=True)
     sx = sx.flatten()
 
     q_ref, scale_ref = pyt_quantize_nvfp4(sample_tensor, tensor_scale)
@@ -125,9 +125,9 @@ def test_nvfp4_mm():
     out_ref = torch.nn.functional.linear(x, w, bias=bias)
     assert out_fp4_pyt.shape == out_ref.shape
 
-    x_q, sx, _, _ = quantize_blockwise_fp4(x, x_absmax, return_identity=True,
+    x_q, sx, _, _ = quantize_transpose_vector_blockwise_fp4(x, x_absmax, return_identity=True,
                                                       return_transpose=False, swizzled_scale=True)
-    w_q, sw, _, _ = quantize_blockwise_fp4(w, w_absmax, return_identity=True,
+    w_q, sw, _, _ = quantize_transpose_vector_blockwise_fp4(w, w_absmax, return_identity=True,
                                                       return_transpose=False, swizzled_scale=True)
     out_fp4 = fp4_gemm_blockwise(x_q, sx, w_q, sw, bias=bias, block_length=16, alpha=total_scale,
                        out_dtype=torch.bfloat16)

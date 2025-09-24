@@ -9,7 +9,8 @@ torch.manual_seed(0)
 __all__ = [
     "tensor_absmax",
     "quantize_per_tensor_fp8",
-    "quantize_blockwise_fp4",
+    "quantize_nvfp4",
+    "quantize_transpose_vector_blockwise_fp4",
     "fp4_gemm_blockwise",
 ]
 
@@ -75,7 +76,7 @@ def quantize_per_tensor_fp8(x: torch.Tensor, scale: torch.Tensor, output_type: t
     comfy_quant.ext.compute_quantize_fp8_tensor(x, q_tensor, scale)
     return q_tensor
 
-def quantize_blockwise_fp4(
+def quantize_transpose_vector_blockwise_fp4(
     x: torch.Tensor,
     global_amax: torch.Tensor,
     quant_dtype: torch.dtype = torch.float4_e2m1fn_x2,
@@ -210,6 +211,18 @@ def quantize_blockwise_fp4(
     )
     return qx, sx, qx_t, sx_t
 
+def quantize_nvfp4(x, amax):
+    x, sx, _, _ = quantize_transpose_vector_blockwise_fp4(
+            x,
+            amax,
+            torch.float4_e2m1fn_x2,
+            block_length=16,
+            return_identity=True,
+            return_transpose=False,
+            eps = 0.0,
+            swizzled_scale = True,
+        )
+    return x, sx
 
 def fp4_gemm_blockwise(
     a: torch.Tensor,

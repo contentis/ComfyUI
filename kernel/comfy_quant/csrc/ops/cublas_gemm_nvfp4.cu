@@ -248,8 +248,8 @@ void cublas_gemm_blockwise_fp4_impl(
     TORCH_CUDABLAS_CHECK(cublasLtMatrixLayoutDestroy(Adesc));
   if (operationDesc)
     TORCH_CUDABLAS_CHECK(cublasLtMatmulDescDestroy(operationDesc));
-  if (ltHandle)
-    TORCH_CUDABLAS_CHECK(cublasLtDestroy(ltHandle));
+//   if (ltHandle)
+//     TORCH_CUDABLAS_CHECK(cublasLtDestroy(ltHandle));
 }
 
 } // anonymous namespace
