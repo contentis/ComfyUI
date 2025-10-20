@@ -23,6 +23,12 @@ from comfy.cli_args import args, PerformanceFeature
 import comfy.float
 import comfy.rmsnorm
 import contextlib
+try:
+    import comfy_kitchen as ck
+    ck.disable_backend("cutile")
+    _CK_AVAILABLE = True
+except:
+    _CK_AVAILABLE = False
 
 def run_every_op():
     comfy.model_management.throw_exception_if_processing_interrupted()
@@ -352,7 +358,10 @@ def fp8_linear(self, input):
             input = input.reshape(-1, input_shape[2]).to(dtype).contiguous()
         else:
             scale_input = scale_input.to(input.device)
-            input = (input * (1.0 / scale_input).to(input_dtype)).reshape(-1, input_shape[2]).to(dtype).contiguous()
+            if _CK_AVAILABLE:
+                input = ck.quantize_per_tensor_fp8(input, scale_input).reshape(-1, input_shape[2])
+            else:
+                input = (input * (1.0 / scale_input).to(input_dtype)).reshape(-1, input_shape[2]).to(dtype).contiguous()
 
         if bias is not None:
             o = torch._scaled_mm(input, w, out_dtype=input_dtype, bias=bias, scale_a=scale_input, scale_b=scale_weight)
