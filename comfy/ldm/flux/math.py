@@ -27,6 +27,7 @@ def rope(pos: Tensor, dim: int, theta: int) -> Tensor:
     out = rearrange(out, "b n d (i j) -> b n d i j", i=2, j=2)
     return out.to(dtype=torch.float32, device=pos.device)
 
+@torch.cuda.nvtx.range("apply_rope1")
 def apply_rope1(x: Tensor, freqs_cis: Tensor):
     if ops._CK_AVAILABLE:
         return ops.ck.apply_rope1(x, freqs_cis)
