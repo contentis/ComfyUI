@@ -31,6 +31,7 @@ def list_recipes():
 # Import recipe modules to trigger registration
 from . import flux  # noqa: F401, E402
 from . import qwen # noqa: F401, E402
+from . import ltx_video # noqa: F401, E402
 
 
 

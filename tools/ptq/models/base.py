@@ -39,7 +39,7 @@ class ModelRecipe(ABC):
 class SamplerCFG:
     cfg: float
     sampler_name: str
-    scheduler: str
-    denoise: float
-    flux_cfg: float
+    scheduler: str = "simple"
+    denoise: float = 1.0
+    flux_cfg: float = 1.0
     img_cfg: float = 2.0
