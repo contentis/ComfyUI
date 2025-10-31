@@ -8,7 +8,6 @@ import torch
 from safetensors.torch import save_file
 import json
 
-# Add comfyui to path if needed
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -21,14 +20,11 @@ class QuantizationConfig:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
-        # Compile disable list patterns
         self.disable_patterns = []
         for pattern in self.config.get('disable_list', []):
-            # Convert glob-style patterns to regex
             regex_pattern = pattern.replace('*', '.*')
             self.disable_patterns.append(re.compile(regex_pattern))
 
-        # Parse per-layer dtype config
         self.per_layer_dtype = self.config.get('per_layer_dtype', {})
         self.dtype_patterns = []
         for pattern, dtype in self.per_layer_dtype.items():
@@ -106,7 +102,7 @@ def apply_quantization(
 
         dtype_str = config.get_dtype(layer_name)
         dtype = getattr(torch, dtype_str)
-        device = torch.device("cuda") # Required for NVFP4
+        device = torch.device("cuda")
 
         weight = checkpoint.pop(f"{layer_name}.weight").to(device)
         scale_tensor = get_scale(amax, dtype)
@@ -116,7 +112,6 @@ def apply_quantization(
             input_scale = get_scale(input_amax, dtype)
             quantized_dict[f"{layer_name}.input_scale"] = input_scale.clone()
 
-        # logging.info(f"Quantizing {layer_name}: amax={amax}, scale={scale_tensor:.6f}")
         tensor_layout = QUANT_FORMAT_MIXINS[dtype_str]["layout_type"]
         quantized_weight, layout_params = tensor_layout.quantize(
             weight,
@@ -129,7 +124,6 @@ def apply_quantization(
         if "block_scale" in layout_params:
             quantized_dict[f"{layer_name}.weight_block_scale"] = layout_params["block_scale"].clone()
 
-        # Build metadata
         layer_metadata[layer_name] = {
             "format": dtype_str,
             "params": {}
@@ -149,8 +143,6 @@ def apply_quantization(
 
 
 def main():
-    """Main entry point for checkpoint merger."""
-
     parser = argparse.ArgumentParser(
         description="Merge calibration artifacts with checkpoint to create quantized model",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -196,9 +188,6 @@ def main():
             format='[%(levelname)s] %(message)s'
         )
 
-    # Print header
-
-    # Step 1: Load calibration artefact
     logging.info("[1/5] Loading calibration artefact...")
     try:
         artefact_data = load_amax_artefact(args.artefact)
@@ -207,7 +196,6 @@ def main():
         logging.error(f"Failed to load artefact: {e}")
         sys.exit(1)
 
-    # Step 2: Load quantization config
     logging.info("[2/5] Loading quantization config...")
     try:
         config = QuantizationConfig(args.config)
@@ -215,7 +203,6 @@ def main():
         logging.error(f"Failed to load config: {e}")
         sys.exit(1)
 
-    # Step 3: Load checkpoint
     logging.info("[3/5] Loading checkpoint...")
     try:
         checkpoint = comfy.utils.load_torch_file(args.checkpoint)
@@ -224,7 +211,6 @@ def main():
         logging.error(f"Failed to load checkpoint: {e}")
         sys.exit(1)
 
-    # Step 4: Apply quantization
     logging.info("[4/5] Applying quantization...")
     try:
         quantized_dict, metadata_json = apply_quantization(
@@ -238,7 +224,6 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # Step 5: Export quantized checkpoint
     logging.info("[5/5] Exporting quantized checkpoint...")
     try:
         save_file(quantized_dict, args.output, metadata=metadata_json)

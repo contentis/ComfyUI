@@ -6,7 +6,6 @@ import comfy.ops
 from modelopt.torch.quantization.nn import QuantModuleRegistry, TensorQuantizer
 
 
-# FP8 E4M3 configuration
 FP8_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
@@ -18,7 +17,6 @@ FP8_CFG = {
 
 
 def register_comfy_ops():
-    """Register ComfyUI operations with ModelOptimizer."""
     op = comfy.ops.disable_weight_init.Linear
     op_name = op.__name__
 
@@ -26,7 +24,6 @@ def register_comfy_ops():
         logging.debug("ComfyUI Linear already registered with ModelOptimizer")
         return
 
-    # Register ComfyUI Linear using the same handler as torch.nn.Linear
     QuantModuleRegistry.register(
         {op: f"comfy.{op_name}"}
     )(QuantModuleRegistry._registry[getattr(torch.nn, op_name)])
@@ -67,11 +64,9 @@ def save_amax_dict(amax_dict: Dict[str, torch.Tensor], output_path: str, metadat
 
     logging.info(f"Saving {len(amax_dict)} amax values to {output_path}")
 
-    # Convert tensors to Python floats for JSON serialization
     amax_values = {}
     for key, value in amax_dict.items():
         if isinstance(value, torch.Tensor):
-            # Convert to float (scalar) or list
             if value.numel() == 1:
                 amax_values[key] = float(value.item())
             else:
@@ -79,7 +74,6 @@ def save_amax_dict(amax_dict: Dict[str, torch.Tensor], output_path: str, metadat
         else:
             amax_values[key] = float(value)
 
-    # Build output with metadata
     output_dict = {
         "metadata": {
             "timestamp": datetime.now().isoformat(),
@@ -89,7 +83,6 @@ def save_amax_dict(amax_dict: Dict[str, torch.Tensor], output_path: str, metadat
         "amax_values": amax_values
     }
 
-    # Save as formatted JSON for easy inspection
     with open(output_path, 'w') as f:
         json.dump(output_dict, f, indent=2, sort_keys=True)
 
