@@ -1,5 +1,4 @@
 import logging
-
 import torch
 
 import comfy.sd
@@ -52,11 +51,12 @@ class QwenPipe:
 
         latent = EmptySD3LatentImage().execute(self.width, self.height).args[0]
 
-        out, denoised_out = KSampler().sample(model, self.seed, num_inference_steps,
-                                              self.sampler_cfg.cfg, self.sampler_cfg.sampler_name,
-                                              self.sampler_cfg.scheduler, positive=positive,
-                                              negative=negative, latent_image=latent,
-                                              denoise=self.sampler_cfg.denoise)
+        out = KSampler().sample(
+            model=model, seed=self.seed, steps=num_inference_steps,
+            cfg=self.sampler_cfg.cfg, sampler_name=self.sampler_cfg.sampler_name,
+            scheduler=self.sampler_cfg.scheduler, positive=positive,
+            negative=negative, latent_image=latent,
+            denoise=self.sampler_cfg.denoise)[0]
 
     @torch.inference_mode
     def image_edit(self, num_inference_steps, positive_prompt, negative_prompt, image, *args, **kwargs):
@@ -67,16 +67,16 @@ class QwenPipe:
         negative = TextEncodeQwenImageEditPlus().execute(self.clip, negative_prompt, image).args[0]
 
 
-
         model = ModelSamplingAuraFlow().patch_aura(self.diffusion_model, self.sampler_cfg.flux_cfg)[0]
         model = CFGNorm().execute(model, 1.0).args[0]
 
 
-        out, denoised_out = KSampler().sample(model, self.seed, num_inference_steps,
-                                              self.sampler_cfg.cfg, self.sampler_cfg.sampler_name,
-                                              self.sampler_cfg.scheduler, positive=positive,
-                                              negative=negative, latent_image=latent_image,
-                                              denoise=self.sampler_cfg.denoise)
+        out = KSampler().sample(
+            model=model, seed=self.seed, steps=num_inference_steps,
+            cfg=self.sampler_cfg.cfg, sampler_name=self.sampler_cfg.sampler_name,
+            scheduler=self.sampler_cfg.scheduler, positive=positive,
+            negative=negative, latent_image=latent_image,
+            denoise=self.sampler_cfg.denoise)[0]
 
 class QwenRecipeBase(ModelRecipe):
     @classmethod

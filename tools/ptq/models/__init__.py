@@ -32,6 +32,5 @@ def list_recipes():
 from . import flux  # noqa: F401, E402
 from . import qwen # noqa: F401, E402
 from . import ltx_video # noqa: F401, E402
-
-
+from . import wan # noqa: F401, E402
 

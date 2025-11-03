@@ -1,5 +1,4 @@
 import logging
-
 import torch
 
 import comfy.sd
@@ -107,8 +106,6 @@ class LTXVRecipeBase(ModelRecipe):
             raise ValueError("--unet_path requires both --t5_path")
 
     def load_model(self) -> Tuple:
-        """Load FLUX model, CLIP, and VAE."""
-        # Load from full checkpoint
         logging.info(f"Loading full checkpoint from {self.args.ckpt_path}")
         model_patcher, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
             self.args.ckpt_path,

@@ -47,11 +47,12 @@ class FluxT2IPipe:
         negative = ConditioningZeroOut().zero_out(positive)[0]
         latent = EmptySD3LatentImage().execute(self.width, self.height).args[0]
 
-        out, denoised_out = KSampler().sample(self.diffusion_model, self.seed, num_inference_steps,
-                                              self.sampler_cfg.cfg, self.sampler_cfg.sampler_name,
-                                              self.sampler_cfg.scheduler, positive=positive,
-                                              negative=negative, latent_image=latent,
-                                              denoise=self.sampler_cfg.denoise)
+        KSampler().sample(
+                        self.diffusion_model, self.seed, num_inference_steps,
+                        self.sampler_cfg.cfg, self.sampler_cfg.sampler_name,
+                        self.sampler_cfg.scheduler, positive=positive,
+                        negative=negative, latent_image=latent,
+                        denoise=self.sampler_cfg.denoise)[0]
 
 
 
@@ -92,7 +93,6 @@ class FluxRecipeBase(ModelRecipe):
                 raise ValueError("--unet_path requires both --clip_path and --t5_path")
 
     def load_model(self) -> Tuple:
-        """Load FLUX model, CLIP, and VAE."""
         if hasattr(self.args, 'ckpt_path') and self.args.ckpt_path:
             # Load from full checkpoint
             logging.info(f"Loading full checkpoint from {self.args.ckpt_path}")
@@ -235,11 +235,11 @@ class FluxKontextPipe:
         conditioning_img = FluxGuidance().execute(conditioning_img, self.sampler_cfg.img_cfg).args[0]
 
         conditioning_prompt = ConditioningZeroOut().zero_out(positive)[0]
-        out, denoised_out = KSampler().sample(self.diffusion_model, self.seed, num_inference_steps,
+        KSampler().sample(self.diffusion_model, self.seed, num_inference_steps,
                                               self.sampler_cfg.cfg, self.sampler_cfg.sampler_name,
                                               self.sampler_cfg.scheduler, positive=conditioning_img,
                                               negative=conditioning_prompt, latent_image=image_encoded,
-                                              denoise=self.sampler_cfg.denoise)
+                                              denoise=self.sampler_cfg.denoise)[0]
 
     def _preview_img(self, out):
         pass
